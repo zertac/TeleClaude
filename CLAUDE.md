@@ -41,6 +41,11 @@ Single-file Python application (`telegram_claude_bot.py`) with batch file wrappe
 - `allowed_user_ids` - Whitelist for access control (empty = allow all)
 - `working_dir` - Default working directory (empty = script directory)
 
+**Environment variables (override `config.json`):**
+- `TELEGRAM_BOT_TOKEN`
+- `ALLOWED_USER_IDS` - Comma/space separated list or JSON array
+- `WORKING_DIR`
+
 Claude CLI is auto-discovered from PATH using `shutil.which()`.
 
 **Bot Commands:**

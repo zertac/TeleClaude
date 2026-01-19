@@ -4,6 +4,7 @@ import logging
 import os
 import json
 import shutil
+import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -11,17 +12,14 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
 
+ENV_TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN"
+ENV_ALLOWED_USER_IDS = "ALLOWED_USER_IDS"
+ENV_WORKING_DIR = "WORKING_DIR"
+
 def load_config():
     """Load configuration from config.json"""
     if not os.path.exists(CONFIG_FILE):
-        print("=" * 50)
-        print("ERROR: config.json not found!")
-        print("=" * 50)
-        print(f"\n1. Copy config.example.json to config.json")
-        print(f"2. Add your Telegram bot token")
-        print(f"3. (Optional) Add your Telegram ID to allowed_user_ids")
-        print(f"\nFile location: {CONFIG_FILE}")
-        return None
+        return {}
 
     try:
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -30,27 +28,68 @@ def load_config():
         print(f"ERROR: Invalid JSON format in config.json: {e}")
         return None
 
+def parse_allowed_user_ids(value: str):
+    """Parse allowed user IDs from JSON list or comma/space-separated string."""
+    if not value:
+        return []
+    try:
+        data = json.loads(value)
+        if isinstance(data, list):
+            return [int(item) for item in data if str(item).strip()]
+    except json.JSONDecodeError:
+        pass
+    parts = [part for part in re.split(r"[,\s]+", value.strip()) if part]
+    ids = []
+    for part in parts:
+        try:
+            ids.append(int(part))
+        except ValueError:
+            continue
+    return ids
+
 config = load_config()
 if config is None:
     exit(1)
 
-TELEGRAM_BOT_TOKEN = config.get("telegram_bot_token", "")
-ALLOWED_USER_IDS = config.get("allowed_user_ids", [])
-WORKING_DIR = config.get("working_dir", "") or SCRIPT_DIR
+env_bot_token = os.getenv(ENV_TELEGRAM_BOT_TOKEN)
+if env_bot_token is not None:
+    TELEGRAM_BOT_TOKEN = env_bot_token
+else:
+    TELEGRAM_BOT_TOKEN = config.get("telegram_bot_token", "")
 
-# Find Claude CLI from PATH
-CLAUDE_CMD = shutil.which("claude")
-if CLAUDE_CMD is None:
-    # On Windows it might have .cmd extension
-    CLAUDE_CMD = shutil.which("claude.cmd")
+env_allowed_user_ids = os.getenv(ENV_ALLOWED_USER_IDS)
+if env_allowed_user_ids is not None:
+    ALLOWED_USER_IDS = parse_allowed_user_ids(env_allowed_user_ids)
+else:
+    allowed_user_ids = config.get("allowed_user_ids", [])
+    if isinstance(allowed_user_ids, str):
+        ALLOWED_USER_IDS = parse_allowed_user_ids(allowed_user_ids)
+    elif isinstance(allowed_user_ids, list):
+        parsed_ids = []
+        for item in allowed_user_ids:
+            try:
+                parsed_ids.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        ALLOWED_USER_IDS = parsed_ids
+    else:
+        ALLOWED_USER_IDS = []
 
-if CLAUDE_CMD is None:
-    print("=" * 50)
-    print("ERROR: Claude CLI not found!")
-    print("=" * 50)
-    print("\nMake sure Claude CLI is installed and added to PATH.")
-    print("Check: claude --version")
-    exit(1)
+env_working_dir = os.getenv(ENV_WORKING_DIR)
+if env_working_dir is not None:
+    WORKING_DIR = env_working_dir or SCRIPT_DIR
+else:
+    WORKING_DIR = config.get("working_dir", "") or SCRIPT_DIR
+
+def resolve_claude_cmd():
+    """Find Claude CLI from PATH."""
+    cmd = shutil.which("claude")
+    if cmd is None:
+        # On Windows it might have .cmd extension
+        cmd = shutil.which("claude.cmd")
+    return cmd
+
+CLAUDE_CMD = resolve_claude_cmd()
 # ================================
 
 logging.basicConfig(
@@ -62,6 +101,9 @@ logger = logging.getLogger(__name__)
 def run_claude(prompt: str, continue_conversation: bool = True) -> str:
     """Run Claude CLI and get response"""
     try:
+        if not CLAUDE_CMD:
+            return "Error: Claude CLI not found. Is it in PATH?\nCheck: claude --version"
+
         cmd = [CLAUDE_CMD]
 
         if continue_conversation:
@@ -199,8 +241,15 @@ def main():
         print("=" * 50)
         print("ERROR: Set your Telegram bot token!")
         print("=" * 50)
-        print(f"\nOpen config.json and set telegram_bot_token.")
-        print(f"File: {CONFIG_FILE}")
+        print(f"\nSet telegram_bot_token in config.json or set {ENV_TELEGRAM_BOT_TOKEN}.")
+        print(f"Config file: {CONFIG_FILE}")
+        return
+    if not CLAUDE_CMD:
+        print("=" * 50)
+        print("ERROR: Claude CLI not found!")
+        print("=" * 50)
+        print("\nMake sure Claude CLI is installed and added to PATH.")
+        print("Check: claude --version")
         return
 
     print("Starting bot...")
