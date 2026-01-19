@@ -120,6 +120,19 @@ Open `config.json` in any text editor (Notepad works fine):
 }
 ```
 
+### Option B: Use Environment Variables
+
+You can set environment variables instead of (or to override) `config.json`:
+
+```cmd
+set TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+set ALLOWED_USER_IDS=123456789,987654321
+set WORKING_DIR=C:\Projects
+```
+
+- `ALLOWED_USER_IDS` accepts a comma/space-separated list or a JSON array (e.g., `[123456789]`).
+- Environment variables override values from `config.json`.
+
 ### Step 4: Verify Claude CLI
 
 Make sure Claude CLI is installed and working:
